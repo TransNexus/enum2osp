@@ -7,17 +7,17 @@
 
 #
 # The following three files should replace the files in BIND source tree.
-# Note, the files are for bind-9.9.3-P2. For other versions, please only insert ENUM2OSP related code.
+# Note, the files are for bind-9.10.1-P1. For other versions, please only insert ENUM2OSP related code.
 #
 # $BIND_SRC/bin/named/main.c
 # $BIND_SRC/bin/named/Makefile.in
 # $BIND_SRC/lib/dns/sdb.c
 #
 
-diff -Nur bind-9.9.3-P2/bin/named/main.c bind-9.9.3-P2.osp/bin/named/main.c
---- bind-9.9.3-P2/bin/named/main.c	2013-07-16 18:13:06.000000000 -0400
-+++ bind-9.9.3-P2.osp/bin/named/main.c	2013-08-08 22:52:17.480221980 -0400
-@@ -82,6 +82,7 @@
+diff -Nur bind-9.10.1-P1/bin/named/main.c bind-9.10.1-P1.osp/bin/named/main.c
+--- bind-9.10.1-P1/bin/named/main.c	2014-11-20 18:56:37.000000000 -0500
++++ bind-9.10.1-P1.osp/bin/named/main.c	2015-02-04 08:32:53.489150137 -0500
+@@ -85,6 +85,7 @@
   * Include header files for database drivers here.
   */
  /* #include "xxdb.h" */
@@ -25,7 +25,7 @@ diff -Nur bind-9.9.3-P2/bin/named/main.c bind-9.9.3-P2.osp/bin/named/main.c
  
  #ifdef CONTRIB_DLZ
  /*
-@@ -904,6 +905,7 @@
+@@ -1016,6 +1017,7 @@
  	 * Add calls to register sdb drivers here.
  	 */
  	/* xxdb_init(); */
@@ -33,7 +33,7 @@ diff -Nur bind-9.9.3-P2/bin/named/main.c bind-9.9.3-P2.osp/bin/named/main.c
  
  #ifdef ISC_DLZ_DLOPEN
  	/*
-@@ -940,6 +942,7 @@
+@@ -1056,6 +1058,7 @@
  	 * Add calls to unregister sdb drivers here.
  	 */
  	/* xxdb_clear(); */
@@ -41,9 +41,9 @@ diff -Nur bind-9.9.3-P2/bin/named/main.c bind-9.9.3-P2.osp/bin/named/main.c
  
  #ifdef CONTRIB_DLZ
  	/*
-diff -Nur bind-9.9.3-P2/bin/named/Makefile.in bind-9.9.3-P2.osp/bin/named/Makefile.in
---- bind-9.9.3-P2/bin/named/Makefile.in	2013-07-16 18:13:06.000000000 -0400
-+++ bind-9.9.3-P2.osp/bin/named/Makefile.in	2013-08-08 22:52:52.135762363 -0400
+diff -Nur bind-9.10.1-P1/bin/named/Makefile.in bind-9.10.1-P1.osp/bin/named/Makefile.in
+--- bind-9.10.1-P1/bin/named/Makefile.in	2014-11-20 18:56:37.000000000 -0500
++++ bind-9.10.1-P1.osp/bin/named/Makefile.in	2015-02-04 08:32:16.673013703 -0500
 @@ -34,10 +34,10 @@
  #
  # Add database drivers here.
@@ -59,10 +59,10 @@ diff -Nur bind-9.9.3-P2/bin/named/Makefile.in bind-9.9.3-P2.osp/bin/named/Makefi
  
  DLZ_DRIVER_DIR =	${top_srcdir}/contrib/dlz/drivers
  
-diff -Nur bind-9.9.3-P2/lib/dns/sdb.c bind-9.9.3-P2.osp/lib/dns/sdb.c
---- bind-9.9.3-P2/lib/dns/sdb.c	2013-07-16 18:13:06.000000000 -0400
-+++ bind-9.9.3-P2.osp/lib/dns/sdb.c	2013-08-08 22:53:30.184388401 -0400
-@@ -856,6 +856,13 @@
+diff -Nur bind-9.10.1-P1/lib/dns/sdb.c bind-9.10.1-P1.osp/lib/dns/sdb.c
+--- bind-9.10.1-P1/lib/dns/sdb.c	2014-11-20 18:56:37.000000000 -0500
++++ bind-9.10.1-P1.osp/lib/dns/sdb.c	2015-02-04 08:34:00.883230308 -0500
+@@ -855,6 +855,13 @@
  	flags = sdb->implementation->flags;
  	i = (flags & DNS_SDBFLAG_DNS64) != 0 ? nlabels : olabels;
  	for (; i <= nlabels; i++) {
