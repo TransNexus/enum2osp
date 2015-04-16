@@ -9,3 +9,7 @@ Version 1.0.1 / Build 2015-02-27
 
 Version 1.0.2 / Build 2015-02-27
 * Minor changes.
+---------------------------------------------------------------------------
+
+Version 1.1.0 / Build 2015-04-16
+* Updated to support Acme ENUM extension.
