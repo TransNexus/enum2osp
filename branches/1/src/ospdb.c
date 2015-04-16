@@ -26,6 +26,7 @@
 #include <dns/sdb.h>
 
 #include <named/globals.h>
+#include <named/client.h>
 
 #include <osp/osp.h>
 #include <osp/osputils.h>
@@ -57,6 +58,7 @@
 #define OSPDB_NAME_RETRYDELAY	"httpretrydelay"		/* HTTP retry delay parameter name */
 #define OSPDB_NAME_RETRYLIMIT	"httpretrylimit"		/* HTTP retry limit parameter name */
 #define OSPDB_NAME_TIMEOUT		"httptimeout"			/* HTTP timeout parameter name */
+#define OSPDB_NAME_USESRCURI	"usesourceuri"			/* Support EDNS0 source URI */
 #define OSPDB_NAME_DEVICEIP		"deviceip"				/* OSP client address */
 #define OSPDB_NAME_MAXDEST		"maxdestinations"		/* Max number of destinations parameter name */
 #define OSPDB_NAME_NIDLOCATION	"networkidlocation"		/* Destination network ID location parameter name */
@@ -93,6 +95,7 @@
 #define OSPDB_MAX_TIMEOUT		60000						/* Max timeout in milliseconds */
 #define OSPDB_CUSTOMER_ID		""							/* Customer ID */
 #define OSPDB_DEVICE_ID			""							/* Device ID */
+#define OSPDB_DEF_USESRCURI		ISC_TRUE					/* Support EDNS0 source URI */
 #define OSPDB_DEF_DEVICEIP		"127.0.0.1"					/* Default OSP client address */
 #define OSPDB_DEF_MAXDEST		2							/* Default max number of destinations returned from OSPrey server */
 #define OSPDB_MIN_MAXDEST		1							/* Min max number of destinations returned from OSPrey server */
@@ -107,6 +110,16 @@
 /* Protocol */
 #define OSPDB_PROTOCOL_SIP		"sip"	/* SIP */
 #define OSPDB_PROTOCOL_H323		"h323"	/* H.323 */
+
+/* URI scheme header */
+#define OSPDB_URIHEADER_SIP		"sip:"	/* SIP URI scheme header */
+#define OSPDB_URIHEADER_SIPS	"sips:"	/* SIPS URI scheme header */
+#define OSPDB_URIHEADER_TEL		"tel:"	/* Telephone URI scheme header */
+
+/* URI scheme header length */
+#define OSPDB_URIHLEN_SIP		4		/* SIP URI scheme header */
+#define OSPDB_URIHLEN_SIPS		5		/* SIPS URI scheme header */
+#define OSPDB_URIHLEN_TEL		4		/* Telephone URI scheme header */
 
 /* Configuration parameters */
 typedef struct ospdb_config {
@@ -130,6 +143,7 @@ typedef struct ospdb_config {
 
 /* Running data */
 typedef struct ospdb_data {
+	isc_boolean_t usesrcuri;		/* Support EDNS0 source URI flag */
 	char deviceip[OSPDB_STR_SIZE];	/* OSP client address */
 	int maxdest;					/* Max number of destinations */
 	int nidlocation;				/* Destination network ID location */
@@ -140,9 +154,11 @@ typedef struct ospdb_data {
 
 /* Query info */
 typedef struct ospdb_query {
-	const char *host;		/* DNS server address */
-	const char *client;		/* DNS client address */
 	const char *name;		/* Domain name */
+	const char *serverip;	/* DNS server address */
+	const char *clientip;	/* DNS client address */
+	const char *srcuriuser;	/* Source URI user */
+	const char *srcurihost;	/* Source URI host */
 } ospdb_query_t;
 
 /* Response info */
@@ -177,7 +193,6 @@ static isc_boolean_t ospdb_init_flag = ISC_FALSE;
  * Init configuration parameter structure
  * param cfg Configuration parameter structure
  * param data Running data structure
- * return
  */
 static void ospdb_init_config(
 	ospdb_config_t *cfg,
@@ -210,6 +225,7 @@ static void ospdb_init_config(
 	cfg->timeout = OSPDB_DEF_TIMEOUT;
 
 	/* Running data */
+	data->usesrcuri = OSPDB_DEF_USESRCURI;
 	data->deviceip[0] = '\0';
 	data->maxdest = OSPDB_DEF_MAXDEST;
 	data->nidlocation = OSPDB_DEF_NIDLOCATION;
@@ -225,7 +241,6 @@ static void ospdb_init_config(
  * param argv Configuration parameters
  * param cfg Configuration parameter structure
  * param data Running data structure
- * return
  */
 static void ospdb_get_config(
 	int argc,
@@ -361,6 +376,16 @@ static void ospdb_get_config(
 				} else {
 					OSPDB_LOG(ISC_LOG_WARNING, "Wrong %s value '%s'", name, value);
 				}
+			} else if (strcmp(name, OSPDB_NAME_USESRCURI) == 0) {
+				if (strcmp(value, OSPDB_VALUE_YES) == 0) {
+					data->usesrcuri = ISC_TRUE;
+					OSPDB_LOG(ISC_LOG_DEBUG(2), "%s = '%d'", name, data->usesrcuri);
+				} else if (strcmp(value, OSPDB_VALUE_NO) == 0) {
+					data->usesrcuri = ISC_FALSE;
+					OSPDB_LOG(ISC_LOG_DEBUG(2), "%s = '%d'", name, data->usesrcuri);
+				} else {
+					OSPDB_LOG(ISC_LOG_WARNING, "Wrong %s value '%s'", name, value);
+				}
 			} else if (strcmp(name, OSPDB_NAME_DEVICEIP) == 0) {
 				snprintf(data->deviceip, sizeof(data->deviceip), value);
 				OSPDB_LOG(ISC_LOG_DEBUG(2), "%s = '%s'", name, data->deviceip);
@@ -478,7 +503,6 @@ static isc_boolean_t ospdb_check_config(
  * Dump configuration parameters
  * param cfg Configuration parameter structure
  * param data Running data structure
- * return
  */
 static void ospdb_dump_config(
 	ospdb_config_t *cfg,
@@ -490,32 +514,33 @@ static void ospdb_dump_config(
 
 	/* Configuration parameters */
 	for (i = 0; i < cfg->spnum; i++) {
-		OSPDB_LOG(ISC_LOG_DEBUG(1), "spurl[%d] = '%s'", i, cfg->spurl[i]);
-		OSPDB_LOG(ISC_LOG_DEBUG(1), "spweight[%d] = '%d'", i, cfg->spweight[i]);
+		OSPDB_LOG(ISC_LOG_DEBUG(1), "%s%d = '%s'", OSPDB_NAME_SPURL, i + 1, cfg->spurl[i]);
+		OSPDB_LOG(ISC_LOG_DEBUG(1), "%s%d = '%d'", OSPDB_NAME_SPWEIGHT, i + 1, cfg->spweight[i]);
 	}
-	OSPDB_LOG(ISC_LOG_DEBUG(1), "auditurl = '%s'", cfg->auditurl);
-	OSPDB_LOG(ISC_LOG_DEBUG(1), "security = '%d'", cfg->security);
+	OSPDB_LOG(ISC_LOG_DEBUG(1), "%s = '%s'", OSPDB_NAME_AUDITURL, cfg->auditurl);
+	OSPDB_LOG(ISC_LOG_DEBUG(1), "%s = '%d'", OSPDB_NAME_SECURITY, cfg->security);
 	if (cfg->security == ISC_TRUE) {
-		OSPDB_LOG(ISC_LOG_DEBUG(1), "privatekey = '%s'", cfg->privatekey);
-		OSPDB_LOG(ISC_LOG_DEBUG(1), "localcert = '%s'", cfg->localcert);
+		OSPDB_LOG(ISC_LOG_DEBUG(1), "%s = '%s'", OSPDB_NAME_PRIVATEKEY, cfg->privatekey);
+		OSPDB_LOG(ISC_LOG_DEBUG(1), "%s = '%s'", OSPDB_NAME_LOCALCERT, cfg->localcert);
 		for (i = 0; i < cfg->canum; i++) {
-			OSPDB_LOG(ISC_LOG_DEBUG(1), "cacert[%d] = '%s'", i, cfg->cacert[i]);
+			OSPDB_LOG(ISC_LOG_DEBUG(1), "%s%d = '%s'", OSPDB_NAME_CACERT, i + 1, cfg->cacert[i]);
 		}
 	}
-	OSPDB_LOG(ISC_LOG_DEBUG(1), "validation = '%d'", cfg->validation);
-	OSPDB_LOG(ISC_LOG_DEBUG(1), "ssllifetime = '%d'", cfg->ssllifetime);
-	OSPDB_LOG(ISC_LOG_DEBUG(1), "connections = '%d'", cfg->connections);
-	OSPDB_LOG(ISC_LOG_DEBUG(1), "persistence = '%d'", cfg->persistence);
-	OSPDB_LOG(ISC_LOG_DEBUG(1), "retrydelay = '%d'", cfg->retrydelay);
-	OSPDB_LOG(ISC_LOG_DEBUG(1), "retrylimit = '%d'", cfg->retrylimit);
-	OSPDB_LOG(ISC_LOG_DEBUG(1), "timeout = '%d'", cfg->timeout);
+	OSPDB_LOG(ISC_LOG_DEBUG(1), "%s = '%d'", OSPDB_NAME_VALIDATION, cfg->validation);
+	OSPDB_LOG(ISC_LOG_DEBUG(1), "%s = '%d'", OSPDB_NAME_SSLLIFETIME, cfg->ssllifetime);
+	OSPDB_LOG(ISC_LOG_DEBUG(1), "%s = '%d'", OSPDB_NAME_CONNECTIONS, cfg->connections);
+	OSPDB_LOG(ISC_LOG_DEBUG(1), "%s = '%d'", OSPDB_NAME_PERSISTENCE, cfg->persistence);
+	OSPDB_LOG(ISC_LOG_DEBUG(1), "%s = '%d'", OSPDB_NAME_RETRYDELAY, cfg->retrydelay);
+	OSPDB_LOG(ISC_LOG_DEBUG(1), "%s = '%d'", OSPDB_NAME_RETRYLIMIT, cfg->retrylimit);
+	OSPDB_LOG(ISC_LOG_DEBUG(1), "%s = '%d'", OSPDB_NAME_TIMEOUT, cfg->timeout);
 
 	/* Running data */
-	OSPDB_LOG(ISC_LOG_DEBUG(1), "deviceip = '%s'", data->deviceip);
-	OSPDB_LOG(ISC_LOG_DEBUG(1), "maxdest = '%d'", data->maxdest);
-	OSPDB_LOG(ISC_LOG_DEBUG(1), "nidlocation = '%d'", data->nidlocation);
-	OSPDB_LOG(ISC_LOG_DEBUG(1), "nidname = '%s'", data->nidname);
-	OSPDB_LOG(ISC_LOG_DEBUG(1), "userphone = '%d'", data->userphone);
+	OSPDB_LOG(ISC_LOG_DEBUG(1), "%s = '%d'", OSPDB_NAME_USESRCURI, data->usesrcuri);
+	OSPDB_LOG(ISC_LOG_DEBUG(1), "%s = '%s'", OSPDB_NAME_DEVICEIP, data->deviceip);
+	OSPDB_LOG(ISC_LOG_DEBUG(1), "%s = '%d'", OSPDB_NAME_MAXDEST, data->maxdest);
+	OSPDB_LOG(ISC_LOG_DEBUG(1), "%s = '%d'", OSPDB_NAME_NIDLOCATION, data->nidlocation);
+	OSPDB_LOG(ISC_LOG_DEBUG(1), "%s = '%s'", OSPDB_NAME_NIDNAME, data->nidname);
+	OSPDB_LOG(ISC_LOG_DEBUG(1), "%s = '%d'", OSPDB_NAME_USERPHONE, data->userphone);
 
 	OSPDB_LOG_END;
 }
@@ -651,7 +676,6 @@ static isc_result_t ospdb_create_provider(
 /*
  * Delete OSP provider
  * param provider OSP provider handle
- * return
  */
 static void ospdb_delete_provider(
 	OSPTPROVHANDLE provider)
@@ -664,11 +688,107 @@ static void ospdb_delete_provider(
 }
 
 /*
+ * Parse SIP/SIPS URI
+ * param secure SIP or SIPS
+ * param uri SIP/SIPS URI
+ * param user URI user buffer
+ * param usersize URI user buffer size
+ * param host URI host buffer
+ * param hostsize URI host buffer size
+ */
+static void ospdb_parse_sipuri(
+	isc_boolean_t secure,
+	char* uri,
+	char* user,
+	int usersize,
+	char* host,
+	int hostsize)
+{
+	char* head = uri + ((secure == ISC_TRUE) ? OSPDB_URIHLEN_SIPS : OSPDB_URIHLEN_SIP);
+	char* end;
+	char* ptr;
+
+	if ((ptr = strchr(head, '@')) == NULL) {
+		user[0] = '\0';
+	} else {
+		/* With userinfo */
+		ptr[0] = '\0';
+		/* Parse user */
+		if ((end = strchr(head, ':')) != NULL) {
+			/* With password */
+			end[0] = '\0';
+		}
+		if ((end = strchr(head, ';')) != NULL) {
+			/* With parameter */
+			end[0] = '\0';
+		}
+		strncpy(user, head, usersize);
+		user[usersize - 1] = '\0';
+		head = ptr + 1;
+	}
+	/* Prase hostport */
+	if ((end = strchr(head, ';')) != NULL) {
+		end[0] = '\0';
+	}
+	strncpy(host, head, hostsize);
+	host[hostsize - 1] = '\0';
+}
+
+/*
+ * Parse telephone URI
+ * param uri Telephone URI
+ * param user URI user buffer
+ * param usersize URI user buffer size
+ */
+static void ospdb_parse_teluri(
+	char* uri,
+	char* user,
+	int usersize)
+{
+	char* head = uri + OSPDB_URIHLEN_TEL;
+	char* end;
+
+	if ((end = strchr(head, ';')) != NULL) {
+		end[0] = '\0';
+	}
+	strncpy(user, head, usersize);
+	user[usersize - 1] = '\0';
+}
+
+/*
+ * Parse source URI
+ * param uri Source URI
+ * param user URI user buffer
+ * param usersize URI user buffer size
+ * param host URI host buffer
+ * param hostsize URI host buffer size
+ */
+static void ospdb_parse_uri(
+	char* uri,
+	char* user,
+	int usersize,
+	char* host,
+	int hostsize)
+{
+	char* head = uri;
+
+	user[0] = '\0';
+	host[0] = '\0';
+
+	if (memcmp(head, OSPDB_URIHEADER_SIP, OSPDB_URIHLEN_SIP) == 0) {
+		ospdb_parse_sipuri(ISC_FALSE, uri, user, usersize, host, hostsize);
+	} else if (memcmp(head, OSPDB_URIHEADER_SIPS, OSPDB_URIHLEN_SIPS) == 0) {
+		ospdb_parse_sipuri(ISC_TRUE, uri, user, usersize, host, hostsize);
+	} else if (memcmp(head, OSPDB_URIHEADER_TEL, OSPDB_URIHLEN_TEL) == 0) {
+		ospdb_parse_teluri(uri, user, usersize);
+	}
+}
+
+/*
  * Convert "address:port" to "[x.x.x.x]:port" or "hostname:port" format
  * param addr Address string
  * param buffer Destination buffer
  * param bufsize Size of buffer
- * return
  */
 static void ospdb_convert_toout(
 	const char* addr,
@@ -710,7 +830,6 @@ static void ospdb_convert_toout(
  * param addr Address string
  * param buf Destination buffer
  * param bufsize Size of buffer
- * return
  */
 static void ospdb_convert_toin(
 	const char* addr,
@@ -786,7 +905,6 @@ static isc_result_t ospdb_check_domain(
  * param domain ENUM domain
  * param buf Destination buffer
  * param bufsize Size of buffer
- * return
  */
 static void ospdb_convert_domain(
 	const char *domain,
@@ -839,12 +957,16 @@ static isc_result_t ospdb_request_auth(
 	/* Set service type */
 	OSPPTransactionSetServiceType(transaction, OSPC_SERVICE_VOICE);
 
-	ospdb_convert_toout(query->host, source, sizeof(source));
-	ospdb_convert_toout(query->client, srcdev, sizeof(srcdev));
+	ospdb_convert_toout(query->serverip, source, sizeof(source));
+	if (query->srcurihost[0] != '\0') {
+		ospdb_convert_toout(query->srcurihost, srcdev, sizeof(srcdev));
+	} else {
+		ospdb_convert_toout(query->clientip, srcdev, sizeof(srcdev));
+	}
 	ospdb_convert_domain(query->name, called, sizeof(called));
 
 	/* Log AuthReq info */
-	OSPDB_LOG(ISC_LOG_DEBUG(1), "AuthReq source '%s' srcdev '%s' called '%s' destnum '%d'", source, srcdev, called, *destnum);
+	OSPDB_LOG(ISC_LOG_DEBUG(1), "AuthReq source '%s' srcdev '%s' called '%s' calling '%s' destnum '%d'", source, srcdev, called, query->srcuriuser, *destnum);
 
 	/* Get AuthReq start time */
 	gettimeofday(&ts, NULL);
@@ -852,9 +974,9 @@ static isc_result_t ospdb_request_auth(
 	/* Request OSP authorization */
 	error = OSPPTransactionRequestAuthorisation(
 		transaction,		/* Transaction handle */
-		source,				/* Source, BIND address */
-		srcdev,				/* Source device, ENUM client address */
-		"",					/* Calling number */
+		source,				/* BIND server address */
+		srcdev,				/* Source device or ENUM client address */
+		query->srcuriuser,	/* Calling number */
 		OSPC_NFORMAT_E164,	/* Calling number format */
 		called,				/* Called number */
 		OSPC_NFORMAT_E164,	/* Called number format */
@@ -1203,13 +1325,20 @@ static isc_result_t ospdb_lookup(
 	dns_sdblookup_t *lookup)
 #endif /* DNS_CLIENTINFO_VERSION */
 {
+#ifdef DNS_CLIENTINFO_VERSION
+	ns_client_t *client;
+	isc_sockaddr_t *address;
+	int length;
+	char srcuribuf[OSPDB_STR_SIZE];
+#endif /* DNS_CLIENTINFO_VERSION */
 	ospdb_data_t *data = dbdata;
 	int error = OSPC_ERR_NO_ERROR;
 	OSPTTRANHANDLE transaction;
-	isc_sockaddr_t *address;
-	char client[OSPDB_STR_SIZE];
-	unsigned int i;
 	ospdb_query_t query;
+	char clientip[OSPDB_STR_SIZE];
+	char srcuriuser[OSPDB_STR_SIZE];
+	char srcurihost[OSPDB_STR_SIZE];
+	unsigned int index;
 	ospdb_response_t response;
 	char record[OSPDB_STR_SIZE];
 	isc_result_t result = ISC_R_SUCCESS;
@@ -1231,23 +1360,37 @@ static isc_result_t ospdb_lookup(
 		result = ISC_R_NOTFOUND;
 	} else {
 		if ((error = OSPPTransactionNew(data->provider, &transaction)) == OSPC_ERR_NO_ERROR) {
-			/* Get DNS server address */
-			query.host = data->deviceip;
+			/* Get domain name */
+			query.name = name;
 
-			/* Get DNS client address */
-			client[0] = '\0';
+			/* Get DNS server address */
+			query.serverip = data->deviceip;
+
+			/* Get DNS client address and source URI info */
+			clientip[0] = '\0';
+			srcuriuser[0] = '\0';
+			srcurihost[0] = '\0';
 #ifdef DNS_CLIENTINFO_VERSION
 			if ((methods != NULL) && ((methods->version - methods->age) >= DNS_CLIENTINFOMETHODS_VERSION)) {
 				methods->sourceip(clientinfo, &address);
-				if (getnameinfo(&address->type.sa, address->length, client, sizeof(client), NULL, 0, NI_NUMERICHOST) != 0) {
-					client[0] = '\0';
+				if (getnameinfo(&address->type.sa, address->length, clientip, sizeof(clientip), NULL, 0, NI_NUMERICHOST) != 0) {
+					clientip[0] = '\0';
+				}
+			}
+
+			if ((data->usesrcuri == ISC_TRUE) && (clientinfo != NULL)) {
+				client = (ns_client_t *)clientinfo->data;
+				if ((client != NULL) && (client->urilen != 0)) {
+					length = client->urilen < sizeof(srcuribuf) ? client->urilen : sizeof(srcuribuf) - 1;
+					memmove(srcuribuf, client->uribuf, length);
+					srcuribuf[length] = '\0';
+					ospdb_parse_uri(srcuribuf, srcuriuser, sizeof(srcuriuser), srcurihost, sizeof(srcurihost));
 				}
 			}
 #endif /* DNS_CLIENTINFO_VERSION */
-			query.client = client;
-
-			/* Get domain name */
-			query.name = name;
+			query.clientip = clientip;
+			query.srcuriuser = srcuriuser;
+			query.srcurihost = srcurihost;
 
 			response.total = data->maxdest;
 			if ((result = ospdb_request_auth(transaction, &query, &response.total)) == ISC_R_SUCCESS) {
@@ -1255,8 +1398,8 @@ static isc_result_t ospdb_lookup(
 					ospdb_build_record(data, &response, record, sizeof(record));
 					dns_sdb_putrr(lookup, "NAPTR", 0, record);
 
-					for (i = 0; i < (response.total - 1); i++) {
-						response.count = i + 2;
+					for (index = 0; index < (response.total - 1); index++) {
+						response.count = index + 2;
 						if ((result = ospdb_get_next(transaction, &response)) == ISC_R_SUCCESS) {
 							ospdb_build_record(data, &response, record, sizeof(record));
 							dns_sdb_putrr(lookup, "NAPTR", 0, record);
@@ -1278,7 +1421,7 @@ static isc_result_t ospdb_lookup(
 
 	OSPDB_LOG_END;
 
-	return (result);
+	return result;
 }
 
 /*
@@ -1351,7 +1494,7 @@ static isc_result_t ospdb_create(
 
 	OSPDB_LOG_END;
 
-	return (result);
+	return result;
 }
 
 /*
