@@ -1,7 +1,7 @@
-diff -Nur bind-9.10.1-P1/bin/named/client.c bind-9.10.1-P1.osp/bin/named/client.c
---- bind-9.10.1-P1/bin/named/client.c	2014-11-21 07:56:37.000000000 +0800
-+++ bind-9.10.1-P1.osp/bin/named/client.c	2015-04-14 10:08:05.211590723 +0800
-@@ -102,6 +102,7 @@
+diff -Nur bind-9.10.6/bin/named/client.c bind-9.10.6.osp/bin/named/client.c
+--- bind-9.10.6/bin/named/client.c	2017-07-24 01:31:21.000000000 -0400
++++ bind-9.10.6.osp/bin/named/client.c	2017-11-01 14:38:49.035813587 -0400
+@@ -101,6 +101,7 @@
  #define TCP_BUFFER_SIZE			(65535 + 2)
  #define SEND_BUFFER_SIZE		4096
  #define RECV_BUFFER_SIZE		4096
@@ -9,23 +9,23 @@ diff -Nur bind-9.10.1-P1/bin/named/client.c bind-9.10.1-P1.osp/bin/named/client.
  
  #ifdef ISC_PLATFORM_USETHREADS
  #define NMCTXS				100
-@@ -547,6 +548,7 @@
- 		INSIST(!ISC_QLINK_LINKED(client, ilink));
+@@ -560,6 +561,7 @@
+ 		}
  
  		ns_query_free(client);
 +		isc_mem_put(client->mctx, client->uribuf, URI_BUFFER_SIZE);
  		isc_mem_put(client->mctx, client->recvbuf, RECV_BUFFER_SIZE);
  		isc_event_free((isc_event_t **)&client->sendevent);
  		isc_event_free((isc_event_t **)&client->recvevent);
-@@ -563,7 +565,6 @@
+@@ -576,7 +578,6 @@
  			dns_message_puttemprdataset(client->message,
  						    &client->opt);
  		}
 -
  		dns_message_destroy(&client->message);
- 		if (manager != NULL) {
- 			LOCK(&manager->listlock);
-@@ -1788,6 +1789,11 @@
+ 
+ 		/*
+@@ -1829,6 +1830,11 @@
  				client->attributes |= NS_CLIENTATTR_WANTEXPIRE;
  				isc_buffer_forward(&optbuf, optlen);
  				break;
@@ -37,7 +37,7 @@ diff -Nur bind-9.10.1-P1/bin/named/client.c bind-9.10.1-P1.osp/bin/named/client.
  			default:
  				isc_stats_increment(ns_g_server->nsstats,
  						  dns_nsstatscounter_otheropt);
-@@ -2524,6 +2530,13 @@
+@@ -2573,6 +2579,13 @@
  #endif
  	client->needshutdown = ns_g_clienttest;
  
@@ -51,7 +51,7 @@ diff -Nur bind-9.10.1-P1/bin/named/client.c bind-9.10.1-P1.osp/bin/named/client.
  	ISC_EVENT_INIT(&client->ctlevent, sizeof(client->ctlevent), 0, NULL,
  		       NS_EVENT_CLIENTCONTROL, client_start, client, client,
  		       NULL, NULL);
-@@ -2545,7 +2558,7 @@
+@@ -2594,7 +2607,7 @@
  	 */
  	result = ns_query_init(client);
  	if (result != ISC_R_SUCCESS)
@@ -60,7 +60,7 @@ diff -Nur bind-9.10.1-P1/bin/named/client.c bind-9.10.1-P1.osp/bin/named/client.
  
  	result = isc_task_onshutdown(client->task, client_shutdown, client);
  	if (result != ISC_R_SUCCESS)
-@@ -2560,6 +2573,9 @@
+@@ -2609,6 +2622,9 @@
   cleanup_query:
  	ns_query_free(client);
  
@@ -70,9 +70,9 @@ diff -Nur bind-9.10.1-P1/bin/named/client.c bind-9.10.1-P1.osp/bin/named/client.
   cleanup_recvevent:
  	isc_event_free((isc_event_t **)&client->recvevent);
  
-diff -Nur bind-9.10.1-P1/bin/named/include/named/client.h bind-9.10.1-P1.osp/bin/named/include/named/client.h
---- bind-9.10.1-P1/bin/named/include/named/client.h	2014-11-21 07:56:37.000000000 +0800
-+++ bind-9.10.1-P1.osp/bin/named/include/named/client.h	2015-04-14 10:08:05.211590723 +0800
+diff -Nur bind-9.10.6/bin/named/include/named/client.h bind-9.10.6.osp/bin/named/include/named/client.h
+--- bind-9.10.6/bin/named/include/named/client.h	2017-07-24 01:31:21.000000000 -0400
++++ bind-9.10.6.osp/bin/named/include/named/client.h	2017-11-01 14:38:49.035813587 -0400
 @@ -163,6 +163,8 @@
  	ISC_QLINK(ns_client_t)	ilink;
  	unsigned char		cookie[8];
@@ -82,10 +82,10 @@ diff -Nur bind-9.10.1-P1/bin/named/include/named/client.h bind-9.10.1-P1.osp/bin
  };
  
  typedef ISC_QUEUE(ns_client_t) client_queue_t;
-diff -Nur bind-9.10.1-P1/bin/named/main.c bind-9.10.1-P1.osp/bin/named/main.c
---- bind-9.10.1-P1/bin/named/main.c	2014-11-21 07:56:37.000000000 +0800
-+++ bind-9.10.1-P1.osp/bin/named/main.c	2015-04-14 10:08:05.217590699 +0800
-@@ -85,6 +85,7 @@
+diff -Nur bind-9.10.6/bin/named/main.c bind-9.10.6.osp/bin/named/main.c
+--- bind-9.10.6/bin/named/main.c	2017-07-24 01:31:21.000000000 -0400
++++ bind-9.10.6.osp/bin/named/main.c	2017-11-01 14:38:49.035813587 -0400
+@@ -90,6 +90,7 @@
   * Include header files for database drivers here.
   */
  /* #include "xxdb.h" */
@@ -93,7 +93,7 @@ diff -Nur bind-9.10.1-P1/bin/named/main.c bind-9.10.1-P1.osp/bin/named/main.c
  
  #ifdef CONTRIB_DLZ
  /*
-@@ -1016,6 +1017,7 @@
+@@ -1098,6 +1099,7 @@
  	 * Add calls to register sdb drivers here.
  	 */
  	/* xxdb_init(); */
@@ -101,7 +101,7 @@ diff -Nur bind-9.10.1-P1/bin/named/main.c bind-9.10.1-P1.osp/bin/named/main.c
  
  #ifdef ISC_DLZ_DLOPEN
  	/*
-@@ -1056,6 +1058,7 @@
+@@ -1145,6 +1147,7 @@
  	 * Add calls to unregister sdb drivers here.
  	 */
  	/* xxdb_clear(); */
@@ -109,9 +109,9 @@ diff -Nur bind-9.10.1-P1/bin/named/main.c bind-9.10.1-P1.osp/bin/named/main.c
  
  #ifdef CONTRIB_DLZ
  	/*
-diff -Nur bind-9.10.1-P1/bin/named/Makefile.in bind-9.10.1-P1.osp/bin/named/Makefile.in
---- bind-9.10.1-P1/bin/named/Makefile.in	2014-11-21 07:56:37.000000000 +0800
-+++ bind-9.10.1-P1.osp/bin/named/Makefile.in	2015-04-14 10:08:05.218590691 +0800
+diff -Nur bind-9.10.6/bin/named/Makefile.in bind-9.10.6.osp/bin/named/Makefile.in
+--- bind-9.10.6/bin/named/Makefile.in	2017-07-24 01:31:21.000000000 -0400
++++ bind-9.10.6.osp/bin/named/Makefile.in	2017-11-01 14:38:49.059813171 -0400
 @@ -34,10 +34,10 @@
  #
  # Add database drivers here.
@@ -123,13 +123,13 @@ diff -Nur bind-9.10.1-P1/bin/named/Makefile.in bind-9.10.1-P1.osp/bin/named/Make
 +DBDRIVER_OBJS = ospdb.o
 +DBDRIVER_SRCS = ospdb.c
 +DBDRIVER_INCLUDES = ospdb.h
-+DBDRIVER_LIBS = -losptk -lssl -lpthread -lm
++DBDRIVER_LIBS = -losptk -lutf8proc -lssl -lpthread -lm
  
  DLZ_DRIVER_DIR =	${top_srcdir}/contrib/dlz/drivers
  
-diff -Nur bind-9.10.1-P1/bin/named/ospdb.c bind-9.10.1-P1.osp/bin/named/ospdb.c
---- bind-9.10.1-P1/bin/named/ospdb.c	1970-01-01 08:00:00.000000000 +0800
-+++ bind-9.10.1-P1.osp/bin/named/ospdb.c	2015-04-14 10:47:12.501142027 +0800
+diff -Nur bind-9.10.6/bin/named/ospdb.c bind-9.10.6.osp/bin/named/ospdb.c
+--- bind-9.10.6/bin/named/ospdb.c	1969-12-31 19:00:00.000000000 -0500
++++ bind-9.10.6.osp/bin/named/ospdb.c	2017-11-01 14:38:49.079812824 -0400
 @@ -0,0 +1,1581 @@
 +/*
 + * ospdb.c
@@ -1712,9 +1712,9 @@ diff -Nur bind-9.10.1-P1/bin/named/ospdb.c bind-9.10.1-P1.osp/bin/named/ospdb.c
 +	OSPDB_LOG_END;
 +}
 +
-diff -Nur bind-9.10.1-P1/bin/named/ospdb.h bind-9.10.1-P1.osp/bin/named/ospdb.h
---- bind-9.10.1-P1/bin/named/ospdb.h	1970-01-01 08:00:00.000000000 +0800
-+++ bind-9.10.1-P1.osp/bin/named/ospdb.h	2015-04-14 10:08:05.219590684 +0800
+diff -Nur bind-9.10.6/bin/named/ospdb.h bind-9.10.6.osp/bin/named/ospdb.h
+--- bind-9.10.6/bin/named/ospdb.h	1969-12-31 19:00:00.000000000 -0500
++++ bind-9.10.6.osp/bin/named/ospdb.h	2017-11-01 14:38:49.079812824 -0400
 @@ -0,0 +1,29 @@
 +/*
 + * ospdb.h
@@ -1745,21 +1745,21 @@ diff -Nur bind-9.10.1-P1/bin/named/ospdb.h bind-9.10.1-P1.osp/bin/named/ospdb.h
 +
 +#endif /* OSPDB_H */
 +
-diff -Nur bind-9.10.1-P1/lib/dns/include/dns/message.h bind-9.10.1-P1.osp/lib/dns/include/dns/message.h
---- bind-9.10.1-P1/lib/dns/include/dns/message.h	2014-11-21 07:56:37.000000000 +0800
-+++ bind-9.10.1-P1.osp/lib/dns/include/dns/message.h	2015-04-14 10:08:05.220590677 +0800
-@@ -105,6 +105,7 @@
+diff -Nur bind-9.10.6/lib/dns/include/dns/message.h bind-9.10.6.osp/lib/dns/include/dns/message.h
+--- bind-9.10.6/lib/dns/include/dns/message.h	2017-07-24 01:31:21.000000000 -0400
++++ bind-9.10.6.osp/lib/dns/include/dns/message.h	2017-11-01 14:42:15.128184107 -0400
+@@ -103,6 +103,7 @@
  
  /*%< EDNS0 extended OPT codes */
- #define DNS_OPT_NSID		0x0003		/*%< NSID opt code */
-+#define DNS_OPT_SOURCE_URI		0x0004		/*%< source URI opt code */
- #define DNS_OPT_CLIENT_SUBNET	0x0008		/*%< client subnet opt code */
- #define DNS_OPT_EXPIRE		0x0009		/*%< EXPIRE opt code */
- 
-diff -Nur bind-9.10.1-P1/lib/dns/sdb.c bind-9.10.1-P1.osp/lib/dns/sdb.c
---- bind-9.10.1-P1/lib/dns/sdb.c	2014-11-21 07:56:37.000000000 +0800
-+++ bind-9.10.1-P1.osp/lib/dns/sdb.c	2015-04-14 10:08:05.221590669 +0800
-@@ -855,6 +855,13 @@
+ #define DNS_OPT_NSID		3		/*%< NSID opt code */
++#define DNS_OPT_SOURCE_URI	4		/*%< source URI opt code */
+ #define DNS_OPT_CLIENT_SUBNET	8		/*%< client subnet opt code */
+ #define DNS_OPT_EXPIRE		9		/*%< EXPIRE opt code */
+ #define DNS_OPT_COOKIE		10		/*%< COOKIE opt code */
+diff -Nur bind-9.10.6/lib/dns/sdb.c bind-9.10.6.osp/lib/dns/sdb.c
+--- bind-9.10.6/lib/dns/sdb.c	2017-07-24 01:31:21.000000000 -0400
++++ bind-9.10.6.osp/lib/dns/sdb.c	2017-11-01 14:38:49.081812790 -0400
+@@ -853,6 +853,13 @@
  	flags = sdb->implementation->flags;
  	i = (flags & DNS_SDBFLAG_DNS64) != 0 ? nlabels : olabels;
  	for (; i <= nlabels; i++) {
