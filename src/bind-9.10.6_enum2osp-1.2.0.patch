@@ -123,7 +123,7 @@ diff -Nur bind-9.10.6/bin/named/Makefile.in bind-9.10.6.osp/bin/named/Makefile.i
 +DBDRIVER_OBJS = ospdb.o
 +DBDRIVER_SRCS = ospdb.c
 +DBDRIVER_INCLUDES = ospdb.h
-+DBDRIVER_LIBS = -losptk -lssl -lpthread -lm
++DBDRIVER_LIBS = -losptk -lutf8proc -lssl -lpthread -lm
  
  DLZ_DRIVER_DIR =	${top_srcdir}/contrib/dlz/drivers
  
